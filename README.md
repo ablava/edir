@@ -9,6 +9,6 @@ Description
 -----------
 
 This script is intended to be run as part of an
-IDM to provision users in eDirectory. Please read 
-the comments in the script to get started.
+IDM system to provision users in eDirectory. Please
+read the comments in the script to get started.
 
