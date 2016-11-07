@@ -39,7 +39,7 @@ with these 16 required data fields:
             "primO": "Biology",
             "businessCategory": "Aruba-User-Role = \"staff\"",
             "userPassword": "initial password",
-            "description": "Create on this date or any note",
+            "description": "Create on this date or any note"
         }
     ] 
 }
