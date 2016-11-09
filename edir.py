@@ -66,6 +66,7 @@ Date: 10/31/2016
 from __future__ import print_function
 import time
 import sys
+import traceback
 import json
 import csv
 import argparse
@@ -161,10 +162,13 @@ def main(argv):
         logging.critical("file not found: {0} or {1}".format(in_file, out_file))
         
     except Exception as e:
-        print("ERROR: unknown error while attempting to read/write to file: " \
-                "{0}".format(e))
-        logging.critical("unknown error while attempting to read/write to " \
-                "file".format(e))
+        traceb = sys.exc_info()[-1]
+        stk = traceback.extract_tb(traceb, 1)
+        fname = stk[0][3]
+        print("ERROR: unknown error while processing line '{0}': " \
+                "{1}".format(fname,e))
+        logging.critical("unknown error while processing line '{0}': " \
+                "{1}".format(fname,e))
         
     finally:
         f_in.close()
@@ -177,7 +181,7 @@ def main(argv):
 def create(username, loginDisabled, uidNumber, gidNumber, givenName, fullName, 
             sn, employeeType, dNumber, x500UniqueIdentifier, ou, 
             businessCategory, userPassword, description):
-    """This funtions adds users to eDir"""
+    """This funtion adds users to eDir"""
     
     # Check if any of the parameters are missing
     params = locals()
@@ -558,14 +562,14 @@ def update(username, newusername, loginDisabled, uidNumber, gidNumber,
         result = "ERROR: Could not update eDir user"
             
     print("SUCCESS: user {0} updated in eDir".format(newusername))
-    logging.info("User {0} updated eDir".format(dn))
+    logging.info("User {0} updated in eDir".format(dn))
     result = "SUCCESS: User updated in eDir"
     
     return result
     
 def archive(username):
     """This functions moves a
-    DISABLED user to _Archive OU"""
+    DISABLED user to _Archive.* OU"""
     
     # Check if the argument is missing
     if str(username) == "":
