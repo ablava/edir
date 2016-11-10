@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
 """
-Simple script to manage eDir users via LDAP. 
-It relies on external OES server scripts 
-for user home, shared directory and quota
-provisioning.
+Simple script to manage eDirectory users 
+via LDAP. It relies on external OES server 
+scripts for user home, shared director 
+and quota provisioning.
 
 Usage: 
     python edir.py -f input.json -o output.csv
@@ -78,6 +78,7 @@ import textwrap
 import smtplib
 import base64
 
+
 def main(argv):
     """This is the main body of the script"""
     
@@ -91,7 +92,8 @@ def main(argv):
     config_file = 'settings.py'
     
     if not readConfig(config_file):
-        logging.error("unable to parse the settings file")
+        print("unable to process the settings file")
+        logging.error("unable to process the settings file")
         sys.exit()
     
     # Parse script arguments
@@ -117,9 +119,9 @@ def main(argv):
     
     try:
         f_in = open(in_file, 'rb')
-        logging.info("opened file: {0}".format(in_file))
+        logging.info("opened input file: {0}".format(in_file))
         f_out = open(out_file, 'wb')
-        logging.info("opened file: {0}".format(out_file))
+        logging.info("opened output file: {0}".format(out_file))
         reader = json.load(f_in)
         writer = csv.writer(f_out)
         writer.writerow( ['action','username','result'] )
@@ -150,12 +152,12 @@ def main(argv):
             elif row["action"] == 'archive':
                  result = archive(str(row["username"]))
             else:
-                print("ERROR: unrecognized action")                
-                logging.error("unrecognized action")
-                result = "ERROR: Unrecognized action"
+                print("ERROR: unrecognized action: {0}".format(row["action"]))                
+                logging.error("unrecognized action: {0}".format(row["action"]))
+                result = "ERROR: Unrecognized action."
             
             # Write the result to the output csv file
-            writer.writerow( [row["action"], row["username"], result] )
+            writer.writerow([row["action"], row["username"], result])
             
     except IOError:
         print("ERROR: Unable to open input/output file!")
@@ -169,15 +171,16 @@ def main(argv):
                 "{1}".format(fname,e))
         logging.critical("unknown error while processing line '{0}': " \
                 "{1}".format(fname,e))
-        
+                
     finally:
         f_in.close()
-        logging.info("closed file: {0}".format(in_file))
+        logging.info("closed input file: {0}".format(in_file))
         f_out.close()
-        logging.info("closed file: {0}".format(out_file))
+        logging.info("closed output file: {0}".format(out_file))
         
     return
 
+    
 def create(username, loginDisabled, uidNumber, gidNumber, givenName, fullName, 
             sn, employeeType, dNumber, x500UniqueIdentifier, ou, 
             businessCategory, userPassword, description):
@@ -193,7 +196,7 @@ def create(username, loginDisabled, uidNumber, gidNumber, givenName, fullName,
             logging.error("unable to create user {0} because {1} is missing " \
                             "a value".format(username, _item))
             result = "ERROR: Missing an expected input value for " + _item \
-                        + " in input file"
+                        + " in input file."
             return result
 
     # We have all we need, connect to LDAP
@@ -201,7 +204,7 @@ def create(username, loginDisabled, uidNumber, gidNumber, givenName, fullName,
     
     # Catch LDAP connection failure
     if not l:
-        result = "ERROR: unable to connect to LDAP server"
+        result = "ERROR: unable to connect to LDAP server."
         return result
         
     # Do a quick check if the user already exists
@@ -291,100 +294,71 @@ def create(username, loginDisabled, uidNumber, gidNumber, givenName, fullName,
         print("SUCCESS: User {0} added to eDir, now updating groups." \
                         .format(username))
         
-        # Wait 20s untill all replicas are fully sync'd if needed
-        # time.sleep(20)
-        
-        # Could use findUser(l, username) here
-        # to verify that the user exists
-        
         # Add user to GeneralMacUsers groups (and DeptGroup if exists)
         for group in groups:
             # First update the user
             mod_attrs = [( ldap.MOD_ADD, 'securityEquals', group ), 
                         ( ldap.MOD_ADD, 'groupMembership', group )]
             l.modify_s(dn, mod_attrs)
-            # and and modify the group
+            # and now modify the group
             addMember(l, group, dn)
         
         logging.info("user {0} added to the eDir groups - now adding " \
                         "memberUid hack".format(username))
         
         # Add the username to memberUid attrib of GeneralMacUsers group
-        # to support the dirty hack for Mac logins!!!
         mod_attrs = [( ldap.MOD_ADD, 'memberUid', username )]
         l.modify_s(gdn, mod_attrs)
         logging.info("user {0} added to memberUid attrib of eDir group {1} " \
-                        "- remove later".format(username, gdn))
+                        "- deprecate later!".format(username, gdn))
         
         # Its nice to the server to disconnect
         l.unbind_s()
         
     except ldap.LDAPError, e:
-        print("ERROR: Could not add user to eDir or update groups for: " \
+        print("ERROR: Could not add user to eDir or update groups: " \
                     "{0}".format(e))
-        logging.error("eDir add or group update failed for user: " \
-                    "{0}".format(username))
-        result = "ERROR: Could not create eDir user or update groups"
+        logging.error("eDir add or group update failed for user {0}: " \
+                    "{1}".format(username, e))
+        result = "ERROR: Could not create eDir user or update groups."
         return result
     
     try:
-        # Make HTTP requests to create homes/LAN/quotas
-        # Exclude quest accounts from space creation
+        # Make HTTP requests to create homes/quotas
+        # Exclude guest accounts from space creation
         if userType == "STU":
             response = urllib.urlopen(
-            "http://studentserver.domain.edu/cgi-bin/getspace.pl?username=" 
+            "http://stufileserver.domain.edu/cgi-bin/getspace.pl?username=" 
             + username)
             code = response.getcode()
-            logging.info("request status for studentserver: {0}".format(code))
-            
-            response = urllib.urlopen(
-            "http://fileserver.domain.edu/cgi-bin/getspace.pl?username=" 
-            + username)
-            code = response.getcode()
-            logging.info("request status for fileserver: {0}".format(code))
-            
-            response = urllib.urlopen(
-            "http://mediaserver.domain.edu/cgi-bin/getspace.pl?username=" 
-            + username)
-            code = response.getcode()
-            logging.info("request status for mediaserver: {0}".format(code))
-            
+            logging.info("request status for stufileserver: {0}".format(code))
+
         elif userType == "GST":
             logging.info("not requesting any space for the guest user: {0}" \
                             .format(username))
         else:
             response = urllib.urlopen(
-            "http://empserver.domain.edu/cgi-bin/getspace.pl?username=" 
+            "http://empfileserver.domain.edu/cgi-bin/getspace.pl?username=" 
             + username)
             code = response.getcode()
-            logging.info("request status for empserver: {0}".format(code))
-            
-            response = urllib.urlopen(
-            "http://fileserver.domain.edu/cgi-bin/getspace.pl?username=" 
-            + username + ":" + ou)
-            code = response.getcode()
-            logging.info("request status for fileserver: {0}".format(code))
-            
-            response = urllib.urlopen(
-            "http://mediaserver.domain.edu/cgi-bin/getspace.pl?username=" 
-            + username)
-            code = response.getcode()
-            logging.info("request status for mediaserver: {0}".format(code))
-    
+            logging.info("request status for empfileserver: {0}".format(code))
+
     except Exception as e:
             print("ERROR: unknown error while requesting user storage: {0}" \
                     .format(e))
-            logging.error("unknown error while requesting user storage")
-            result = "ERROR: Could not provision storage for the user"
+            logging.error("unknown error while requesting user storage: {0}" \
+                    .format(e))
+            result = "ERROR: Could not provision storage for the user."
     
-    print("SUCCESS: user added to eDir and groups plus space requested" \
+    print("SUCCESS: user added to eDir/groups and space was requested" \
             .format(dn))
-    logging.info("user {0} was added to eDir and groups plus space requested" \
+    logging.info("user {0} was added to eDir/groups and space was requested" \
             .format(dn))
-    result = "SUCCESS: User added to eDir"
+    result = "SUCCESS: User added to eDir."
     
     return result
-    
+
+   
 def update(username, newusername, loginDisabled, uidNumber, gidNumber, 
             givenName, fullName, sn, employeeType, dNumber, 
             x500UniqueIdentifier, ou, businessCategory, description):
@@ -403,7 +377,7 @@ def update(username, newusername, loginDisabled, uidNumber, gidNumber,
             logging.error("unable to update user {0} because {1} is missing " \
                             "a value".format(username, _item))
             result = "ERROR: Missing an expected input value for " \
-                        + _item + " in input file"
+                        + _item + " in input file."
             return result
 
     # We have all we need, connect to LDAP
@@ -411,7 +385,7 @@ def update(username, newusername, loginDisabled, uidNumber, gidNumber,
     
     # Catch the condition when LDAP connection failed
     if not l:
-        result = "ERROR: unable to connect to LDAP server"
+        result = "ERROR: unable to connect to LDAP server."
         return result
     
     # Do a quick check if the user exists
@@ -431,7 +405,7 @@ def update(username, newusername, loginDisabled, uidNumber, gidNumber,
                     "they are of different type".format(username, newusername))
             logging.error("unable to rename user {0} to {1} because " \
                     "they are of different type".format(username, newusername))
-            result = "ERROR: can't rename users across different OUs"
+            result = "ERROR: can't rename users across different OUs."
             return result
 
         # Rename the user
@@ -469,23 +443,25 @@ def update(username, newusername, loginDisabled, uidNumber, gidNumber,
             mod_attrs = [( ldap.MOD_ADD, 'memberUid', newusername )]
             l.modify_s(gdn, mod_attrs)
             logging.info("user {0} added to memberUid attrib of eDir group " \
-                            "{1} - remove later!!!".format(newusername, gdn))
+                            "{1} - deprecate later!".format(newusername, gdn))
             
             # Find and delete the old memberUid attribute value
             delMemberUid(l, gn, gdn, username)
-   
+
         except ldap.LDAPError, e:
             print("ERROR: Could not rename user or update GeneralMac_Users " \
                     "group in eDir: {0}".format(e))
             logging.error("eDir rename failed from: {0} to {1} or update of " \
-                   "GeneralMac_Users group failed".format(username, newusername))
-            result = "ERROR: Could not rename eDir user"
+                   "GeneralMac_Users group failed: {2}" \
+                   .format(username, newusername, e))
+            result = "ERROR: Could not rename eDir user."
             return result
             
         except Exception as e:
             print("ERROR: unknown error while renaming user: {0}".format(e))
-            logging.error("unknown error while attempting to rename user")
-            result = "ERROR: Could not rename eDir user"
+            logging.error("unknown error while attempting to rename user: {0}" \
+                            .format(e))
+            result = "ERROR: Could not rename eDir user."
             
         print("INFO: user {0} renamed to {1} in eDir" \
                 .format(username, newusername))
@@ -493,11 +469,11 @@ def update(username, newusername, loginDisabled, uidNumber, gidNumber,
                         .format(username, newusername))
         
         # Send an email to the operator re: outstanding
-        # renames of home, shared folders and eDir homeDir attribute
+        # renames of home folders and eDir homeDir attribute
         frm = FROM
         to = TO
         subject = "eDir user renamed: " + dn + " to " + newusername
-        text = "Need to rename home and other shared folders, " \
+        text = "Need to rename home folder " \
                 "as well as ndsHomeDirectory attribute!"
                 
         sendMail(frm, to, subject, text)
@@ -522,7 +498,7 @@ def update(username, newusername, loginDisabled, uidNumber, gidNumber,
             if ARUBAPATTERN in value:
                 mod_attrs = [ ( ldap.MOD_DELETE, 'businessCategory', value ) ]
                 l.modify_s(dn, mod_attrs)
- 
+
         # Build the list of modifications
         # We do not reset passwords here!
         mod_attrs = [
@@ -552,20 +528,21 @@ def update(username, newusername, loginDisabled, uidNumber, gidNumber,
         
     except ldap.LDAPError, e:
         print("ERROR: Could not update user in eDir: {0}".format(e))
-        logging.error("eDir update failed for: {0}".format(username))
-        result = "ERROR: Could not update eDir user"
+        logging.error("eDir update failed for {0}: {1}".format(username, e))
+        result = "ERROR: Could not update eDir user."
         return result
     
     except Exception as e:
         print("ERROR: unknown error while updating user: {0}".format(e))
-        logging.error("unknown error while updating user")
-        result = "ERROR: Could not update eDir user"
+        logging.error("unknown error while updating user: {0}".format(e))
+        result = "ERROR: Could not update eDir user."
             
     print("SUCCESS: user {0} updated in eDir".format(newusername))
     logging.info("User {0} updated in eDir".format(dn))
-    result = "SUCCESS: User updated in eDir"
+    result = "SUCCESS: User updated in eDir."
     
     return result
+
     
 def archive(username):
     """This functions moves a
@@ -578,7 +555,7 @@ def archive(username):
         logging.error("unable to archive user because username argument " \
                         "is missing a value")
         result = "ERROR: Missing an expected input value for username " \
-                    "in input file"
+                    "in input file."
         return result
             
     # We have all we need, connect to LDAP
@@ -586,7 +563,7 @@ def archive(username):
     
     # Catch the condition when LDAP connection failed
     if not l:
-        result = "ERROR: unable to connect to LDAP server"
+        result = "ERROR: unable to connect to LDAP server."
         return result
     
     # Do a quick check if the user exists
@@ -612,7 +589,7 @@ def archive(username):
         if userType == "STU":
             container_new = "ou=_Archive" + STUDENTOU
         elif userType == "GST":
-            result = "ERROR: we do not archive guest accounts"
+            result = "ERROR: we do not archive guest accounts."
             return result
         else:
             container_new = "ou=_Archive" + EMPOU
@@ -624,15 +601,16 @@ def archive(username):
         
     except ldap.LDAPError, e:
         print("ERROR: Could move user in eDir: {0}".format(e))
-        logging.error("eDir move failed for user {0}".format(username))
-        result = "ERROR: Could not move eDir user"
+        logging.error("eDir move failed for user {0}: {1}".format(username, e))
+        result = "ERROR: Could not move eDir user."
         return result
         
     print("SUCCESS: user {0} archived in eDir".format(username))
     logging.info("user {0} archived in eDir".format(dn))
-    result = "SUCCESS: User archived in eDir"
+    result = "SUCCESS: User archived in eDir."
     
     return result
+
     
 def delete(username):
     """This function deletes 
@@ -648,7 +626,7 @@ def delete(username):
         logging.error("unable to delete user because username argument " \
                         "is missing a value")
         result = "ERROR: Missing an expected input value for username " \
-                    "in input file"
+                    "in input file."
         return result
             
     # We have all we need, connect to LDAP
@@ -656,7 +634,7 @@ def delete(username):
         
     # Catch the condition when LDAP connection failed
     if not l:
-        result = "ERROR: unable to connect to LDAP server"
+        result = "ERROR: unable to connect to LDAP server."
         return result
     
     # Do a quick check if the user exists
@@ -701,25 +679,25 @@ def delete(username):
         
     except ldap.LDAPError, e:
         print("ERROR: Could not delete user in eDir: {0}".format(e))
-        logging.error("eDir delete failed for {0}".format(dn))
-        result = "ERROR: Could not delete eDir user"
+        logging.error("eDir delete failed for {0}: {1}".format(dn, e))
+        result = "ERROR: Could not delete eDir user."
         return result
 
     except Exception as e:
         print("ERROR: unknown error while deleting user: {0}".format(e))
-        logging.error("unknown error while deleting user")
-        result = "ERROR: Could not delete eDir user"
+        logging.error("unknown error while deleting user: {0}".format(e))
+        result = "ERROR: Could not delete eDir user."
         
     print("SUCCESS: user {0} deleted from eDir".format(username))
     logging.info("user {0} fully deleted from eDir".format(dn))
-    result = "SUCCESS: User deleted from eDir"
+    result = "SUCCESS: User deleted from eDir."
     
     # Send an email to the operator about 
-    # needing to deprov home, LAN folders, S and M folders
+    # needing to deprov home folder
     frm = FROM
     to = TO
     subject = "eDir user deleted: " + dn
-    text = "Need to deprovision home and other shared folders!"
+    text = "Need to deprovision home folder!"
     
     sendMail(frm, to, subject, text)
     logging.info("sent an email to {0} about user files deprovisioning" \
@@ -727,6 +705,7 @@ def delete(username):
     
     return result
 
+    
 def readConfig(config_file):
     """Function to import the config file"""
     
@@ -785,11 +764,13 @@ def readConfig(config_file):
         MAILSERVER = settings.MAILSERVER
 
     except Exception as e:
+        logging.error("unable to parse settings file: {0}".format(e))
         print("ERROR: unable to parse the settings file: {0}".format(e))
         return False
         
     return True
 
+    
 def getUserType(username):
     """ Function to determine the type of a user"""
 
@@ -801,21 +782,27 @@ def getUserType(username):
         userType = "EMP"
 
     return userType
-    
+
+
 def lookupGroup(ou):
     """ This function looks up 
     group based on HR-provided ou"""
     
     # Create primOU->department group translation dictionary
     deptGroups = {}
+    deptGroups['Admissions'] = 'Admissions'
     deptGroups['Art'] = 'Art'
     deptGroups['History'] = 'History'
-    deptGroups['Art History'] = 'ArtHistory'
+    deptGroups['Biology'] = 'Biology'
     deptGroups['Chemistry'] = 'Chemistry'
     deptGroups['Cinema'] = 'Cinema'
     deptGroups['Classical Studies'] = 'Classics'
-    deptGroups['Human Resources'] = 'HumanResources'
-    deptGroups['Information Technology Services'] = 'ITS'
+    deptGroups['English'] = 'English'
+    deptGroups['Library'] = 'Library'
+    deptGroups['Museum'] = 'Museum'
+    deptGroups['Music'] = 'Music'
+    deptGroups['Philosophy'] = 'Philosophy'
+    deptGroups['Religion'] = 'Religion'
     deptGroups['Theatre'] = 'Theatre'
 
     # Lookup the dept group by ou
@@ -825,6 +812,7 @@ def lookupGroup(ou):
         depGroup = 'cn=' + depGroup + DEPGROUPOU
 
     return depGroup
+
 
 def ldapConnect():
     """Function to bind to LDAP server"""
@@ -842,11 +830,12 @@ def ldapConnect():
         l.simple_bind_s(ldap_user, ldap_secret)
     
     except ldap.LDAPError, e:
-        print("ERROR: Could not establish LDAP connection: {0}".format(e))
-        logging.error("problem binding to eDir LDAP server")
+        print("ERROR: Establishing LDAP connection failed: {0}".format(e))
+        logging.error("problem binding to eDir LDAP server: {0}".format(e))
         return False
         
     return l
+
 
 def findUser(l, username):
     """Do a quick check if the user already exists"""
@@ -861,7 +850,7 @@ def findUser(l, username):
     
     except ldap.LDAPError, e:
         print("ERROR: problems with LDAP search: {0}".format(e))
-        logging.error("problem with LDAP search for: {0}".format(username))
+        logging.error("problem with LDAP search for {0}: {1}".format(username,e))
     
     # Check the search results
     if len(ldap_result) == 0:
@@ -869,7 +858,8 @@ def findUser(l, username):
         return False
         
     return True
-    
+
+
 def userDisabled(l, username):
     """Do a quick check if the user is disabled"""
     
@@ -882,16 +872,17 @@ def userDisabled(l, username):
                                     ['loginDisabled'])
         
     except ldap.LDAPError, e:
-        print("ERROR: unable to retrieve loginDisabled status for username: " \
+        print("ERROR: unable to retrieve loginDisabled status: " \
                 "{0}".format(e))
-        logging.error("problem retrieving loginDisabled status for: {0}" \
-                        .format(username))
+        logging.error("problem retrieving loginDisabled status for {0}: {1}" \
+                        .format(username, e))
     
     # Is the user disabled?
     if ldap_result[0][1]['loginDisabled'][0] == 'TRUE':
         return True
 
     return False
+
 
 def buildDN(username):
     """Function to construct FQN for a username"""
@@ -911,6 +902,7 @@ def buildDN(username):
 
     return dn
  
+ 
 def addMember(l, gdn, dn):
     """Function to add members to a group"""
 
@@ -920,13 +912,15 @@ def addMember(l, gdn, dn):
         l.modify_s(gdn, mod_attrs)
         
     except ldap.LDAPError, e:
-        print("ERROR: cannot add memeber to group {0}, error: {1}" \
+        print("ERROR: cannot add member to group {0}, error: {1}" \
                 .format(gdn, e))
-        logging.error("problem adding user {0} to group {1}".format(dn, gdn))
+        logging.error("problem adding user {0} to group {1}: {2}" \
+                .format(dn, gdn, e))
         
     logging.info("user {0} added to eDir group {1}".format(dn, gdn))
     
     return
+
 
 def delMemberUid(l, gn, gdn, username):
     """Function to delete memberUid atribute"""
@@ -946,10 +940,11 @@ def delMemberUid(l, gn, gdn, username):
     except ldap.LDAPError, e:
         print("ERROR: cannot delete memeberUid from group {0}, error: {1}" \
                 .format(gn, e))
-        logging.error("problem removing old memberUid {0} from group {1}" \
-                        .format(username, gdn))
+        logging.error("problem removing old memberUid {0} from group {1}: {2}" \
+                        .format(username, gdn, e))
     
     return
+
 
 def sendMail(frm, to, subject, text):
     """Function to send a notification email"""
@@ -971,9 +966,10 @@ def sendMail(frm, to, subject, text):
         
     except Exception as e:
         print("ERROR: unable to send email: {0}".format(e))
-        logging.error("unknown error while sending email")
+        logging.error("unknown error while sending email: {0}".format(e))
     
     return
+
 
 if __name__ == "__main__":
     main(sys.argv)
