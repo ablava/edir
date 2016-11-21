@@ -242,7 +242,7 @@ def create(username, loginDisabled, uidNumber, gidNumber, givenName, fullName,
             if deptGroup:
                 groups = groups + [deptGroup]
             else:
-                logging.warning("unable to find departmental group for " /
+                logging.warning("unable to find departmental group for " \
                                     "the user {0}".format(username))
                         
         # Note: we are not setting Login Shell attrib 
