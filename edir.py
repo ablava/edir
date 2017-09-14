@@ -3,7 +3,7 @@
 """
 Simple script to manage eDirectory users 
 via LDAP. It relies on external OES server 
-scripts for user home, shared director 
+scripts for user home, shared directory 
 and quota provisioning.
 
 Usage: 
